@@ -11,17 +11,9 @@ import (
 	credentials "github.com/kerma/aws-credentials"
 )
 
-const (
-	defaultKeyMaxAge = 90
-)
-
 var (
-	keyMaxAge              int
-	credentialReportMaxAge int
-	allKeys                bool
-	username               string
-
-	keyId     string
+	keyMaxAge int
+	username  string
 	writeFile bool
 )
 
@@ -29,33 +21,39 @@ func main() {
 
 	// command line flags setup
 	listCmd := flag.NewFlagSet("list", flag.ExitOnError)
-	listCmd.IntVar(&keyMaxAge, "max-age", defaultKeyMaxAge, "Maximum access key age in days")
-	listCmd.IntVar(&keyMaxAge, "m", defaultKeyMaxAge, "Maximum access key age in days (shorthand)")
-	listCmd.StringVar(&username, "u", "", "Username for the query (shorthand")
+	listCmd.IntVar(&keyMaxAge, "m", credentials.DefaultKeyMaxAge, "Maximum access key age in days")
+	listCmd.StringVar(&username, "u", "", "Username for the query")
 	listCmd.StringVar(&username, "username", "", "Username for the query")
 
 	allCmd := flag.NewFlagSet("all", flag.ExitOnError)
-	allCmd.IntVar(&keyMaxAge, "max-age", defaultKeyMaxAge, "Maximum access key age in days")
-	allCmd.IntVar(&keyMaxAge, "m", defaultKeyMaxAge, "Maximum access key age in days (shorthand)")
+	allCmd.IntVar(&keyMaxAge, "m", credentials.DefaultKeyMaxAge, "Maximum access key age in days")
 
-	newCmd := flag.NewFlagSet("rotate", flag.ExitOnError)
-	newCmd.StringVar(&keyId, "id", "", "Access Key ID")
+	newCmd := flag.NewFlagSet("new", flag.ExitOnError)
 	newCmd.BoolVar(&writeFile, "w", false, "Write new key to credentials file")
+	newCmd.StringVar(&username, "u", "", "Username for the query")
 
-	// commands without flags usage setup
 	deleteCmd := flag.NewFlagSet("delete", flag.ExitOnError)
+	deleteCmd.StringVar(&username, "u", "", "Username (Required when deleting key that does not belong to current user)")
 	deleteCmd.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage:\n  credentials delete <access-key-id>\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage:\n  credentials delete [-u <username>] <access-key-id>\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "Username is required when deleting a key that does not belong to current user\n")
+		os.Exit(1)
 	}
 
 	disableCmd := flag.NewFlagSet("disable", flag.ExitOnError)
+	disableCmd.StringVar(&username, "u", "", "Username (Required when deleting key that does not belong to current user)")
 	disableCmd.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage:\n  credentials disable <access-key-id>\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage:\n  credentials disable [-u <username>] <access-key-id>\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "Username is required when disabling a key that does not belong to current user\n")
+		os.Exit(1)
 	}
 
 	enableCmd := flag.NewFlagSet("enable", flag.ExitOnError)
+	enableCmd.StringVar(&username, "u", "", "Username (Required when deleting key that does not belong to current user)")
 	enableCmd.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage:\n  credentials enable <access-key-id>\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage:\n  credentials enable [-u <username>] <access-key-id>\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "Username is required when enabling a key that does not belong to current user\n")
+		os.Exit(1)
 	}
 
 	// session setup
@@ -67,9 +65,7 @@ func main() {
 
 	// run list as a default
 	if len(os.Args) == 1 {
-		listCmd.Parse(os.Args[1:]) // still call parse to populate defaults
-		c.KeyMaxAge = keyMaxAge
-		c.RunListCmd(username)
+		c.RunListCmd("")
 		return
 	}
 
@@ -82,38 +78,29 @@ func main() {
 
 	case "delete":
 		deleteCmd.Parse(os.Args[2:])
-		if len(os.Args) != 3 {
+		keyId := deleteCmd.Arg(0)
+		if keyId == "" {
 			deleteCmd.Usage()
-		} else {
-			c.RunDeleteCmd(os.Args[2])
 		}
+		c.RunDeleteCmd(keyId, username)
 
 	case "disable":
 		disableCmd.Parse(os.Args[2:])
-		if len(os.Args) != 3 {
+		keyId := disableCmd.Arg(0)
+		if keyId == "" {
 			disableCmd.Usage()
-		} else {
-			c.RunDisableCmd(os.Args[2])
 		}
+		c.RunDisableCmd(keyId, username)
 
 	case "enable":
 		enableCmd.Parse(os.Args[2:])
-		if len(os.Args) != 3 {
+		keyId := enableCmd.Arg(0)
+		if keyId == "" {
 			enableCmd.Usage()
-		} else {
-			c.RunEnableCmd(os.Args[2])
 		}
+		c.RunEnableCmd(os.Args[2], username)
 
-	case "new":
-		newCmd.Parse(os.Args[2:])
-		c.WriteCredentialsFile = writeFile
-		c.RunNewCmd(username)
-	case "list":
-		listCmd.Parse(os.Args[1:])
-		c.KeyMaxAge = keyMaxAge
-		c.RunListCmd(username)
-
-	default:
+	case "help":
 		usage := "Available commands:\n\n" +
 			"\tall - displays a list of all keys for the current account\n" +
 			"\tdelete - delete a key\n" +
@@ -123,6 +110,21 @@ func main() {
 			"\tlist (default) - show current user keys\n\n" +
 			"Use -h to get usage for a command\n"
 		fmt.Printf(usage)
+
+	case "new":
+		newCmd.Parse(os.Args[2:])
+		c.WriteCredentialsFile = writeFile
+		c.RunNewCmd(username)
+
+	case "list":
+		listCmd.Parse(os.Args[2:])
+		c.KeyMaxAge = keyMaxAge
+		c.RunListCmd(username)
+
+	default: // run list as default
+		listCmd.Parse(os.Args[1:])
+		c.KeyMaxAge = keyMaxAge
+		c.RunListCmd(username)
 	}
 
 }

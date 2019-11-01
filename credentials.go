@@ -10,6 +10,10 @@ import (
 	"github.com/fatih/color"
 )
 
+const (
+	DefaultKeyMaxAge = 90
+)
+
 type AccessKeys struct {
 	// *iam.AccessKeyMetadata
 	UserName    string
@@ -31,7 +35,8 @@ type Config struct {
 
 func New(s *iam.IAM) *Config {
 	return &Config{
-		svc: s,
+		svc:       s,
+		KeyMaxAge: DefaultKeyMaxAge,
 	}
 }
 
@@ -94,13 +99,17 @@ func (c *Config) RunNewCmd(username string) {
 
 	creds, _ := c.svc.Config.Credentials.Get()
 	fmt.Println("Delete old key with:")
-	fmt.Printf("\taws-credentials delete -k %v\n", creds.AccessKeyID)
+	fmt.Printf("\tcredentials delete -k %v\n", creds.AccessKeyID)
 
 }
 
 // RunDeleteCmd deletes a given access key
-func (c *Config) RunDeleteCmd(key string) {
-	_, err := c.svc.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: &key})
+func (c *Config) RunDeleteCmd(key, username string) {
+	in := &iam.DeleteAccessKeyInput{AccessKeyId: &key}
+	if username != "" {
+		in.UserName = &username
+	}
+	_, err := c.svc.DeleteAccessKey(in)
 	if err != nil {
 		fatal(err)
 	}
@@ -108,12 +117,16 @@ func (c *Config) RunDeleteCmd(key string) {
 }
 
 // RunDisableCmd deactivates a given access key
-func (c *Config) RunDisableCmd(key string) {
+func (c *Config) RunDisableCmd(key, username string) {
 	status := "Inactive"
-	_, err := c.svc.UpdateAccessKey(&iam.UpdateAccessKeyInput{
+	in := &iam.UpdateAccessKeyInput{
 		AccessKeyId: &key,
 		Status:      &status,
-	})
+	}
+	if username != "" {
+		in.UserName = &username
+	}
+	_, err := c.svc.UpdateAccessKey(in)
 	if err != nil {
 		fatal(err)
 	}
@@ -121,12 +134,16 @@ func (c *Config) RunDisableCmd(key string) {
 }
 
 // RunEnableCmd activates a given access key
-func (c *Config) RunEnableCmd(key string) {
+func (c *Config) RunEnableCmd(key, username string) {
 	status := "Active"
-	_, err := c.svc.UpdateAccessKey(&iam.UpdateAccessKeyInput{
+	in := &iam.UpdateAccessKeyInput{
 		AccessKeyId: &key,
 		Status:      &status,
-	})
+	}
+	if username != "" {
+		in.UserName = &username
+	}
+	_, err := c.svc.UpdateAccessKey(in)
 	if err != nil {
 		fatal(err)
 	}
