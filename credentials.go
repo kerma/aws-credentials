@@ -16,17 +16,16 @@ const (
 	DefaultKeyMaxAge = 90
 )
 
-type AccessKeys struct {
-	// *iam.AccessKeyMetadata
-	UserName    string
-	AccessKeyId string
-	Status      string
-	CreateDate  time.Time
-
+type AccessKeyMetaData struct {
 	Loaded   bool
 	KeyAge   int
 	IsOld    bool
 	LastUsed *time.Time
+}
+
+type AccessKey struct {
+	iam.AccessKeyMetadata
+	AccessKeyMetaData
 }
 
 type Config struct {
@@ -72,9 +71,13 @@ func (c *Config) RunUserListCmd(username string) int {
 
 // RunAllCmd retrieves all users and their access keys
 func (c *Config) RunAllCmd() int {
-	var keys []AccessKeys
+	var keys []AccessKey
 	fmt.Println("Retrieving keys for all users, please wait...")
-	for _, username := range c.getAllUsernames() {
+	usernames, err := c.getAllUsernames()
+	if err != nil {
+		return fatal(err)
+	}
+	for _, username := range usernames {
 		uk, err := c.getUserAccessKeys(username)
 		if err != nil {
 			return fatal(err)
@@ -97,8 +100,12 @@ func (c *Config) RunCheckKeys() int {
 }
 
 func (c *Config) RunCheckAllKeys() int {
-	var keys []AccessKeys
-	for _, username := range c.getAllUsernames() {
+	var keys []AccessKey
+	usernames, err := c.getAllUsernames()
+	if err != nil {
+		return fatal(err)
+	}
+	for _, username := range usernames {
 		uk, err := c.getUserAccessKeys(username)
 		if err != nil {
 			return fatal(err)
@@ -157,9 +164,9 @@ func (c *Config) createNewKey(in *iam.CreateAccessKeyInput) error {
 		fmt.Println(formatConsoleExport(out.AccessKey))
 	}
 
-	creds, _ := c.svc.Config.Credentials.Get()
+	credentials, _ := c.svc.Config.Credentials.Get()
 	fmt.Println("Delete old key with:")
-	fmt.Printf("\tcredentials delete %v\n", creds.AccessKeyID)
+	fmt.Printf("\tcredentials delete %v\n", credentials.AccessKeyID)
 
 	return nil
 }
@@ -244,13 +251,13 @@ func (c *Config) enableKey(in *iam.UpdateAccessKeyInput) int {
 	return 0
 }
 
-func (c *Config) getAllUsernames() []string {
+func (c *Config) getAllUsernames() ([]string, error) {
 	usernames := []string{}
 	in := &iam.ListUsersInput{}
 	for {
 		resp, err := c.svc.ListUsers(in)
 		if err != nil {
-			fatal(err)
+			return nil, err
 		}
 		for _, u := range resp.Users {
 			usernames = append(usernames, *u.UserName)
@@ -261,37 +268,36 @@ func (c *Config) getAllUsernames() []string {
 		}
 		break
 	}
-	return usernames
+	return usernames, nil
 }
 
-func (c *Config) getCurrentAccessKeys() ([]AccessKeys, error) {
+func (c *Config) getCurrentAccessKeys() ([]AccessKey, error) {
 	return c.getAccessKeys(&iam.ListAccessKeysInput{})
 }
 
-func (c *Config) getUserAccessKeys(user string) ([]AccessKeys, error) {
+func (c *Config) getUserAccessKeys(user string) ([]AccessKey, error) {
 	in := &iam.ListAccessKeysInput{
 		UserName: &user,
 	}
 	return c.getAccessKeys(in)
 }
 
-func (c *Config) getAccessKeys(in *iam.ListAccessKeysInput) ([]AccessKeys, error) {
+func (c *Config) getAccessKeys(in *iam.ListAccessKeysInput) ([]AccessKey, error) {
 	out, err := c.svc.ListAccessKeys(in)
 	if err != nil {
 		return nil, err
 	}
 
 	creds, _ := c.svc.Config.Credentials.Get()
-	var keys []AccessKeys
+	var keys []AccessKey
 	for _, meta := range out.AccessKeyMetadata {
-		ak := AccessKeys{
-			UserName:    *meta.UserName,
-			AccessKeyId: *meta.AccessKeyId,
-			Status:      *meta.Status,
-			CreateDate:  *meta.CreateDate,
-			Loaded:      *meta.AccessKeyId == creds.AccessKeyID,
-			KeyAge:      daysSince(*meta.CreateDate),
-			IsOld:       olderThan(*meta.CreateDate, c.KeyMaxAge),
+		ak := AccessKey{
+			*meta,
+			AccessKeyMetaData{
+				Loaded:      *meta.AccessKeyId == creds.AccessKeyID,
+				KeyAge:      daysSince(*meta.CreateDate),
+				IsOld:       olderThan(*meta.CreateDate, c.KeyMaxAge),
+			},
 		}
 		resp, ierr := c.svc.GetAccessKeyLastUsed(
 			&iam.GetAccessKeyLastUsedInput{AccessKeyId: meta.AccessKeyId})
@@ -314,7 +320,7 @@ func olderThan(t time.Time, d int) bool {
 	return daysSince(t) > d
 }
 
-func printAccessKeys(keys []AccessKeys) {
+func printAccessKeys(keys []AccessKey) {
 
 	white.Printf("   %-20s\t%-4s\t%-8s\t%-30s\t%s\n",
 		"AccessKeyId", "Age", "Status", "LastUsed", "Username")
@@ -325,7 +331,7 @@ func printAccessKeys(keys []AccessKeys) {
 			fmt.Printf("   ")
 		}
 
-		fmt.Printf("%-20s\t", k.AccessKeyId)
+		fmt.Printf("%-20s\t", *k.AccessKeyId)
 
 		if k.IsOld {
 			red.Printf("%-4d\t", k.KeyAge)
@@ -333,10 +339,10 @@ func printAccessKeys(keys []AccessKeys) {
 			fmt.Printf("%-4d\t", k.KeyAge)
 		}
 
-		if k.Status == "Active" {
-			green.Printf("%-8s\t", k.Status)
+		if *k.Status == "Active" {
+			green.Printf("%-8s\t", *k.Status)
 		} else {
-			fmt.Printf("%-8s\t", k.Status)
+			fmt.Printf("%-8s\t", *k.Status)
 		}
 
 		if k.LastUsed != nil {
@@ -344,11 +350,11 @@ func printAccessKeys(keys []AccessKeys) {
 		} else {
 			fmt.Printf("%-30s\t", "never")
 		}
-		fmt.Println(k.UserName)
+		fmt.Println(*k.UserName)
 	}
 }
 
-func checkAccessKeys(keys []AccessKeys) int {
+func checkAccessKeys(keys []AccessKey) int {
 	var b bytes.Buffer
 	ret := 0
 	w := bufio.NewWriter(&b)
@@ -357,15 +363,15 @@ func checkAccessKeys(keys []AccessKeys) int {
 	for _, k := range keys {
 		if k.IsOld {
 			ret = 1
-			fmt.Fprintf(w, "%-20s\t", k.AccessKeyId)
+			fmt.Fprintf(w, "%-20s\t", *k.AccessKeyId)
 			fmt.Fprintf(w, "%-4d\t", k.KeyAge)
-			fmt.Fprintf(w, "%-8s\t", k.Status)
+			fmt.Fprintf(w, "%-8s\t", *k.Status)
 			if k.LastUsed != nil {
 				fmt.Fprintf(w, "%-30v\t", k.LastUsed)
 			} else {
 				fmt.Fprintf(w, "%-30s\t", "never")
 			}
-			fmt.Fprintln(w, k.UserName)
+			fmt.Fprintln(w, *k.UserName)
 		}
 	}
 	w.Flush()
