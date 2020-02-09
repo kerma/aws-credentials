@@ -41,6 +41,18 @@ func main() {
 			}
 			return c.RunAllCmd()
 		})
+	check := cli.NewCommand("check", "Check access key ages. Fail if any are older than set days").
+		WithOption(cli.NewOption("max-age", "Maximum age for the key").WithChar('m').WithType(cli.TypeInt)).
+		WithOption(cli.NewOption("all", "Check all keys for the current account").WithChar('a').WithType(cli.TypeBool)).
+		WithAction(func(args []string, options map[string]string) int {
+			if keyMaxAge, ok := options["max-age"]; ok {
+				c.KeyMaxAge, _ = strconv.Atoi(keyMaxAge)
+			}
+			if _, ok := options["all"]; ok {
+				return c.RunCheckAllKeys()
+			}
+			return c.RunCheckKeys()
+		})
 	deleteCmd := cli.NewCommand("delete", "Delete a key").
 		WithShortcut("rm").
 		WithArg(cli.NewArg("key-id", "Access key ID")).
@@ -64,7 +76,7 @@ func main() {
 			}
 			return c.RunDisableCmd(args[0])
 	})
-	enable := cli.NewCommand("disable", "Disable (activate) a key").
+	enable := cli.NewCommand("enable", "Enable (activate) a key").
 		WithArg(cli.NewArg("keyId", "Access key ID")).
 		WithOption(cli.NewOption("username",
 			"Username is required when activating a key which does not belong to the current user").
@@ -91,6 +103,7 @@ func main() {
 	// setup app
 	app := cli.New("AWS Credential manager").
 		WithCommand(all).
+		WithCommand(check).
 		WithCommand(deleteCmd).
 		WithCommand(disable).
 		WithCommand(enable).

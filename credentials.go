@@ -1,6 +1,8 @@
 package credentials
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
@@ -84,6 +86,28 @@ func (c *Config) RunAllCmd() int {
 	fmt.Println()
 	printAccessKeys(keys)
 	return 0
+}
+
+func (c *Config) RunCheckKeys() int {
+	keys, err := c.getCurrentAccessKeys()
+	if err != nil {
+		return fatal(err)
+	}
+	return checkAccessKeys(keys)
+}
+
+func (c *Config) RunCheckAllKeys() int {
+	var keys []AccessKeys
+	for _, username := range c.getAllUsernames() {
+		uk, err := c.getUserAccessKeys(username)
+		if err != nil {
+			return fatal(err)
+		}
+		for _, k := range uk {
+			keys = append(keys, k)
+		}
+	}
+	return checkAccessKeys(keys)
 }
 
 // RunNewCmd creates a new access key
@@ -322,6 +346,33 @@ func printAccessKeys(keys []AccessKeys) {
 		}
 		fmt.Println(k.UserName)
 	}
+}
+
+func checkAccessKeys(keys []AccessKeys) int {
+	var b bytes.Buffer
+	ret := 0
+	w := bufio.NewWriter(&b)
+	fmt.Fprintf(w, "%-20s\t%-4s\t%-8s\t%-30s\t%s\n",
+		"AccessKeyId", "Age", "Status", "LastUsed", "Username")
+	for _, k := range keys {
+		if k.IsOld {
+			ret = 1
+			fmt.Fprintf(w, "%-20s\t", k.AccessKeyId)
+			fmt.Fprintf(w, "%-4d\t", k.KeyAge)
+			fmt.Fprintf(w, "%-8s\t", k.Status)
+			if k.LastUsed != nil {
+				fmt.Fprintf(w, "%-30v\t", k.LastUsed)
+			} else {
+				fmt.Fprintf(w, "%-30s\t", "never")
+			}
+			fmt.Fprintln(w, k.UserName)
+		}
+	}
+	w.Flush()
+	if ret != 0 {
+		fmt.Print(b.String())
+	}
+	return ret
 }
 
 func getProfile() string {
