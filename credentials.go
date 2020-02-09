@@ -46,36 +46,72 @@ var (
 	green = color.New(color.FgGreen)
 )
 
-// RunListCmd runs default command to check user access keys
-func (c *Config) RunListCmd(username string) {
-	keys := c.getAccessKeys(username)
+// RunListCmd runs default command to check current user access keys
+func (c *Config) RunListCmd() int {
+	keys, err := c.getCurrentAccessKeys()
+	if err != nil {
+		return fatal(err)
+	}
 	fmt.Println()
 	printAccessKeys(keys)
+	return 0
+}
+
+// RunUserListCmd runs command to check given user access keys
+func (c *Config) RunUserListCmd(username string) int {
+	keys, err := c.getUserAccessKeys(username)
+	if err != nil {
+		return fatal(err)
+	}
+	fmt.Println()
+	printAccessKeys(keys)
+	return 0
 }
 
 // RunAllCmd retrieves all users and their access keys
-func (c *Config) RunAllCmd() {
+func (c *Config) RunAllCmd() int {
 	var keys []AccessKeys
 	fmt.Println("Retrieving keys for all users, please wait...")
 	for _, username := range c.getAllUsernames() {
-		for _, k := range c.getAccessKeys(username) {
+		uk, err := c.getUserAccessKeys(username)
+		if err != nil {
+			return fatal(err)
+		}
+		for _, k := range uk {
 			keys = append(keys, k)
 		}
 	}
 	fmt.Println()
 	printAccessKeys(keys)
+	return 0
 }
 
-// RunNewCmd creates a new access key and writes it to credentials file
-func (c *Config) RunNewCmd(username string) {
-	in := &iam.CreateAccessKeyInput{}
-	if username != "" {
-		in.UserName = &username
+// RunNewCmd creates a new access key
+func (c *Config) RunNewCmd() int {
+	err := c.createNewKey(&iam.CreateAccessKeyInput{})
+	if err != nil {
+		return fatal(err)
 	}
+	return 0
+}
+
+// RunUserNewCmd creates a new access key for the given user
+func (c *Config) RunUserNewCmd(username string) int {
+	in := &iam.CreateAccessKeyInput{
+		UserName: &username,
+	}
+	err := c.createNewKey(in)
+	if err != nil {
+		return fatal(err)
+	}
+	return 0
+}
+
+func (c *Config) createNewKey(in *iam.CreateAccessKeyInput) error {
 	fmt.Println("Generating new access key")
 	out, err := c.svc.CreateAccessKey(in)
 	if err != nil {
-		fatal(err)
+		return err
 	}
 	fmt.Print("Access key generated: ")
 	color.Green(*out.AccessKey.AccessKeyId)
@@ -85,7 +121,7 @@ func (c *Config) RunNewCmd(username string) {
 		fmt.Println("Writing credentials file")
 		err = writeCredentialsFile(credsOutput)
 		if err != nil {
-			fatal(err)
+			return err
 		}
 		fmt.Println("~/.aws/credentials updated: ")
 		fmt.Println(credsOutput)
@@ -101,53 +137,87 @@ func (c *Config) RunNewCmd(username string) {
 	fmt.Println("Delete old key with:")
 	fmt.Printf("\tcredentials delete %v\n", creds.AccessKeyID)
 
+	return nil
+}
+
+// RunDeleteUserKeyCmd deletes a given users access key
+func (c *Config) RunDeleteUserKeyCmd(key, username string) int {
+	return c.deleteKey(&iam.DeleteAccessKeyInput{
+		AccessKeyId: &key,
+		UserName:    &username,
+	})
 }
 
 // RunDeleteCmd deletes a given access key
-func (c *Config) RunDeleteCmd(key, username string) {
-	in := &iam.DeleteAccessKeyInput{AccessKeyId: &key}
-	if username != "" {
-		in.UserName = &username
-	}
+func (c *Config) RunDeleteCmd(key string) int {
+	return c.deleteKey(&iam.DeleteAccessKeyInput{
+		AccessKeyId: &key,
+	})
+}
+
+func (c *Config) deleteKey(in *iam.DeleteAccessKeyInput) int {
 	_, err := c.svc.DeleteAccessKey(in)
 	if err != nil {
-		fatal(err)
+		return fatal(err)
 	}
-	red.Printf("%s deleted.\n", key)
+	red.Printf("%s deleted.\n", in.AccessKeyId)
+	return 0
 }
 
 // RunDisableCmd deactivates a given access key
-func (c *Config) RunDisableCmd(key, username string) {
+func (c *Config) RunDisableCmd(key string) int {
 	status := "Inactive"
-	in := &iam.UpdateAccessKeyInput{
+	return c.disableKey(&iam.UpdateAccessKeyInput{
 		AccessKeyId: &key,
 		Status:      &status,
-	}
-	if username != "" {
-		in.UserName = &username
-	}
+	})
+}
+
+// RunDisableUserKeyCmd deactivates a given user access key
+func (c *Config) RunDisableUserKeyCmd(key, username string) int {
+	status := "Inactive"
+	return c.disableKey(&iam.UpdateAccessKeyInput{
+		AccessKeyId: &key,
+		Status:      &status,
+		UserName:    &username,
+	})
+}
+
+func (c *Config) disableKey(in *iam.UpdateAccessKeyInput) int {
 	_, err := c.svc.UpdateAccessKey(in)
 	if err != nil {
-		fatal(err)
+		return fatal(err)
 	}
-	fmt.Printf("%s deactivated.\n", key)
+	fmt.Printf("%s deactivated.\n", in.AccessKeyId)
+	return 0
 }
 
 // RunEnableCmd activates a given access key
-func (c *Config) RunEnableCmd(key, username string) {
+func (c *Config) RunEnableCmd(key string) int {
 	status := "Active"
-	in := &iam.UpdateAccessKeyInput{
+	return c.enableKey(&iam.UpdateAccessKeyInput{
 		AccessKeyId: &key,
 		Status:      &status,
-	}
-	if username != "" {
-		in.UserName = &username
-	}
+	})
+}
+
+// RunEnableCmd activates a given access key
+func (c *Config) RunEnableUserKeyCmd(key, username string) int {
+	status := "Active"
+	return c.enableKey(&iam.UpdateAccessKeyInput{
+		AccessKeyId: &key,
+		Status:      &status,
+		UserName:    &username,
+	})
+}
+
+func (c *Config) enableKey(in *iam.UpdateAccessKeyInput) int {
 	_, err := c.svc.UpdateAccessKey(in)
 	if err != nil {
-		fatal(err)
+		return fatal(err)
 	}
-	green.Printf("%s activated.\n", key)
+	green.Printf("%s activated.\n", in.AccessKeyId)
+	return 0
 }
 
 func (c *Config) getAllUsernames() []string {
@@ -170,14 +240,21 @@ func (c *Config) getAllUsernames() []string {
 	return usernames
 }
 
-func (c *Config) getAccessKeys(user string) []AccessKeys {
-	in := &iam.ListAccessKeysInput{}
-	if user != "" {
-		in.UserName = &user
+func (c *Config) getCurrentAccessKeys() ([]AccessKeys, error) {
+	return c.getAccessKeys(&iam.ListAccessKeysInput{})
+}
+
+func (c *Config) getUserAccessKeys(user string) ([]AccessKeys, error) {
+	in := &iam.ListAccessKeysInput{
+		UserName: &user,
 	}
+	return c.getAccessKeys(in)
+}
+
+func (c *Config) getAccessKeys(in *iam.ListAccessKeysInput) ([]AccessKeys, error) {
 	out, err := c.svc.ListAccessKeys(in)
 	if err != nil {
-		fatal(err)
+		return nil, err
 	}
 
 	creds, _ := c.svc.Config.Credentials.Get()
@@ -192,16 +269,17 @@ func (c *Config) getAccessKeys(user string) []AccessKeys {
 			KeyAge:      daysSince(*meta.CreateDate),
 			IsOld:       olderThan(*meta.CreateDate, c.KeyMaxAge),
 		}
-		resp, err := c.svc.GetAccessKeyLastUsed(
+		resp, ierr := c.svc.GetAccessKeyLastUsed(
 			&iam.GetAccessKeyLastUsedInput{AccessKeyId: meta.AccessKeyId})
-		if err != nil {
+		if ierr != nil {
 			fmt.Println("Couldn't get usage data for ", meta.AccessKeyId)
+			err = ierr
 		} else {
 			ak.LastUsed = resp.AccessKeyLastUsed.LastUsedDate
 		}
 		keys = append(keys, ak)
 	}
-	return keys
+	return keys, err
 }
 
 func daysSince(t time.Time) int {
@@ -285,7 +363,7 @@ func writeCredentialsFile(s string) error {
 	return nil
 }
 
-func fatal(i ...interface{}) {
+func fatal(i ...interface{}) int {
 	fmt.Println(i...)
-	os.Exit(1)
+	return 1
 }
