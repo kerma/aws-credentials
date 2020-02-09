@@ -55,7 +55,7 @@ func (c *Config) RunListCmd(username string) {
 
 // RunAllCmd retrieves all users and their access keys
 func (c *Config) RunAllCmd() {
-	keys := []AccessKeys{}
+	var keys []AccessKeys
 	fmt.Println("Retrieving keys for all users, please wait...")
 	for _, username := range c.getAllUsernames() {
 		for _, k := range c.getAccessKeys(username) {
@@ -99,7 +99,7 @@ func (c *Config) RunNewCmd(username string) {
 
 	creds, _ := c.svc.Config.Credentials.Get()
 	fmt.Println("Delete old key with:")
-	fmt.Printf("\tcredentials delete -k %v\n", creds.AccessKeyID)
+	fmt.Printf("\tcredentials delete %v\n", creds.AccessKeyID)
 
 }
 
@@ -181,7 +181,7 @@ func (c *Config) getAccessKeys(user string) []AccessKeys {
 	}
 
 	creds, _ := c.svc.Config.Credentials.Get()
-	keys := []AccessKeys{}
+	var keys []AccessKeys
 	for _, meta := range out.AccessKeyMetadata {
 		ak := AccessKeys{
 			UserName:    *meta.UserName,
