@@ -191,7 +191,7 @@ func (c *Config) deleteKey(in *iam.DeleteAccessKeyInput) int {
 	if err != nil {
 		return fatal(err)
 	}
-	red.Printf("%s deleted.\n", in.AccessKeyId)
+	red.Printf("%s deleted.\n", *in.AccessKeyId)
 	return 0
 }
 
@@ -219,7 +219,7 @@ func (c *Config) disableKey(in *iam.UpdateAccessKeyInput) int {
 	if err != nil {
 		return fatal(err)
 	}
-	fmt.Printf("%s deactivated.\n", in.AccessKeyId)
+	fmt.Printf("%s deactivated.\n", *in.AccessKeyId)
 	return 0
 }
 
