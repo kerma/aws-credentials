@@ -9,6 +9,5 @@ require (
 	github.com/mattn/go-isatty v0.0.10 // indirect
 	github.com/stretchr/testify v1.4.0 // indirect
 	github.com/teris-io/cli v1.0.1
-	golang.org/x/net v0.0.0-20200202094626-16171245cfb2 // indirect
-	golang.org/x/sys v0.0.0-20191018095205-727590c5006e // indirect
+	golang.org/x/net v0.7.0 // indirect
 )
