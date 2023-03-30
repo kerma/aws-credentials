@@ -8,5 +8,5 @@ require (
 	github.com/mattn/go-colorable v0.1.4 // indirect
 	github.com/mattn/go-isatty v0.0.10 // indirect
 	github.com/teris-io/cli v1.0.1
-	golang.org/x/sys v0.0.0-20191018095205-727590c5006e // indirect
+	golang.org/x/sys v0.1.0 // indirect
 )
